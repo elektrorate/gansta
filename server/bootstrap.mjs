@@ -1,0 +1,11 @@
+import { initializeApp,applicationDefault } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+const uid=process.argv[2];
+if(!uid)throw new Error('Uso: npm run bootstrap-admin -- UID. Crea y verifica primero el usuario en Firebase Authentication.');
+initializeApp({credential:applicationDefault(),projectId:process.env.GOOGLE_CLOUD_PROJECT});
+const user=await getAuth().getUser(uid);
+if(!user.emailVerified||user.disabled)throw new Error('El usuario debe tener el correo verificado y estar habilitado.');
+const db=getFirestore();
+await db.runTransaction(async tx=>{const ref=db.doc('system/bootstrap'),lock=await tx.get(ref);if(lock.exists)throw new Error('El primer administrador ya está configurado. Usa la administración de la app.');tx.create(db.doc('users/'+uid),{name:user.displayName||user.email,email:user.email,role:'admin',status:'active'});tx.create(ref,{adminUid:uid,createdAt:new Date().toISOString()});});
+console.log('Primer administrador autorizado.');

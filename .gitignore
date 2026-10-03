@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*
+!.env.example
+*service-account*.json
+*serviceAccount*.json
+*.pem
+*.key
+*.log
+server/node_modules/
+output/
+*.tsbuildinfo
