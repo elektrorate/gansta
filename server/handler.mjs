@@ -16,20 +16,31 @@ import {
 
 export function getAllowedOrigins(env = process.env) {
   const origins = new Set();
-  if (!env.APP_ORIGIN && env.VERCEL !== '1') origins.add('http://localhost:8000');
+  if (!env.APP_ORIGIN && env.VERCEL !== "1")
+    origins.add("http://localhost:8000");
   for (const value of (env.APP_ORIGIN || "").split(",")) {
     try {
       const url = new URL(value.trim());
       if (
         ["http:", "https:"].includes(url.protocol) &&
-        !url.username && !url.password && !url.search && !url.hash &&
-        url.pathname === "/" && !url.hostname.includes("*")
-      ) origins.add(url.origin);
-    } catch { /* Invalid configuration never grants an origin. */ }
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash &&
+        url.pathname === "/" &&
+        !url.hostname.includes("*")
+      )
+        origins.add(url.origin);
+    } catch {
+      /* Invalid configuration never grants an origin. */
+    }
   }
   if (env.VERCEL === "1") {
     for (const host of [env.VERCEL_URL, env.VERCEL_PROJECT_PRODUCTION_URL]) {
-      if (typeof host === "string" && /^[a-z\d]+(?:[a-z\d.-]*[a-z\d])?$/i.test(host))
+      if (
+        typeof host === "string" &&
+        /^[a-z\d]+(?:[a-z\d.-]*[a-z\d])?$/i.test(host)
+      )
         origins.add("https://" + host.toLowerCase());
     }
   }
@@ -113,7 +124,9 @@ async function readBody(req) {
   } catch {
     error("Datos no validos.");
   }
-  let raw, body, hasBody = false;
+  let raw,
+    body,
+    hasBody = false;
   if (supplied !== undefined) {
     if (typeof supplied === "string" || Buffer.isBuffer(supplied)) {
       raw = Buffer.isBuffer(supplied) ? supplied : Buffer.from(supplied);
@@ -131,7 +144,9 @@ async function readBody(req) {
     const chunks = [];
     let bytes = 0;
     try {
-      const stream = req.iterator ? req.iterator({ destroyOnReturn: false }) : req;
+      const stream = req.iterator
+        ? req.iterator({ destroyOnReturn: false })
+        : req;
       for await (const chunk of stream) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         bytes += buffer.length;
@@ -148,11 +163,16 @@ async function readBody(req) {
   }
   if (hasBody) {
     const type = req.headers["content-type"];
-    if (typeof type !== "string" || !/^application\/json(?:\s*;|\s*$)/i.test(type))
+    if (
+      typeof type !== "string" ||
+      !/^application\/json(?:\s*;|\s*$)/i.test(type)
+    )
       error("Se requiere Content-Type application/json.", 415);
     if (body === undefined) {
       try {
-        body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw));
+        body = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(raw),
+        );
       } catch {
         error("Datos no validos.");
       }
@@ -164,12 +184,22 @@ async function readBody(req) {
 }
 
 const tokenErrors = new Set([
-  "auth/argument-error", "auth/invalid-argument", "auth/invalid-id-token",
-  "auth/id-token-expired", "auth/id-token-revoked", "auth/user-disabled",
-  "auth/user-not-found", "auth/tenant-id-mismatch",
+  "auth/argument-error",
+  "auth/invalid-argument",
+  "auth/invalid-id-token",
+  "auth/id-token-expired",
+  "auth/id-token-revoked",
+  "auth/user-disabled",
+  "auth/user-not-found",
+  "auth/tenant-id-mismatch",
 ]);
 
-export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOrigins = getAllowedOrigins(), rateLimits = {} } = {}) {
+export function createApiHandler({
+  auth: injectedAuth,
+  db: injectedDb,
+  allowedOrigins = getAllowedOrigins(),
+  rateLimits = {},
+} = {}) {
   const origins = new Set(allowedOrigins);
   // Best-effort per-instance throttling, not a distributed security boundary.
   const rates = new Map();
@@ -206,26 +236,38 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
       if (origin !== undefined && !originAllowed)
         error("Origen no autorizado.", 403);
       const pathname = new URL(req.url, "http://localhost").pathname;
-      if (["/health", "/api/health"].includes(pathname) && req.method === "GET") {
+      if (
+        ["/health", "/api/health"].includes(pathname) &&
+        req.method === "GET"
+      ) {
         respond({ ok: true });
         return;
       }
       const knownRoute =
         (pathname === "/api/snapshot" && req.method === "GET") ||
-        (["/api/activate", "/api/users"].includes(pathname) && req.method === "POST") ||
+        (["/api/activate", "/api/users"].includes(pathname) &&
+          req.method === "POST") ||
         (/^\/api\/users\/[\w-]+$/.test(pathname) && req.method === "PATCH") ||
-        (/^\/api\/users\/[\w-]+\/resend$/.test(pathname) && req.method === "POST") ||
-        (/^\/api\/offerings\/[\w-]+(?:\/(tasks|entries)\/[\w-]+)?$/.test(pathname) && req.method === "PUT");
+        (/^\/api\/users\/[\w-]+\/resend$/.test(pathname) &&
+          req.method === "POST") ||
+        (/^\/api\/offerings\/[\w-]+(?:\/(tasks|entries)\/[\w-]+)?$/.test(
+          pathname,
+        ) &&
+          req.method === "PUT");
       if (!knownRoute) error("Ruta no encontrada.", 404);
       const authorization = req.headers.authorization;
-      const bearer = typeof authorization === "string"
-        ? authorization.match(/^Bearer (.+)$/i)?.[1] : undefined;
+      const bearer =
+        typeof authorization === "string"
+          ? authorization.match(/^Bearer (.+)$/i)?.[1]
+          : undefined;
       if (!bearer) error("Inicia sesión para continuar.", 401);
       const body = await readBody(req);
       let services;
       try {
-        services = injectedAuth && injectedDb ? { auth: injectedAuth, db: injectedDb }
-          : await (await import("./firebase.mjs")).getFirebaseServices();
+        services =
+          injectedAuth && injectedDb
+            ? { auth: injectedAuth, db: injectedDb }
+            : await (await import("./firebase.mjs")).getFirebaseServices();
       } catch {
         error("Servicio no disponible.", 503);
       }
@@ -234,7 +276,14 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
       try {
         token = await auth.verifyIdToken(bearer, true);
       } catch (e) {
-        error("Tu sesión ha caducado. Inicia sesión de nuevo.", tokenErrors.has(e.code) ? 401 : 503);
+        console.error(
+          "auth_verification_failed",
+          e.code || e.name || "unknown",
+        );
+        error(
+          "Tu sesión ha caducado. Inicia sesión de nuevo.",
+          tokenErrors.has(e.code) ? 401 : 503,
+        );
       }
       const userRef = db.doc("users/" + token.uid),
         userSnap = await userRef.get(),
@@ -246,7 +295,8 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
       else if (++limit.n > maxRequests)
         error("Demasiadas solicitudes. Espera un minuto.", 429);
       if (rates.size > 10000)
-        for (const [key, v] of rates) if (now - v.at > windowMs) rates.delete(key);
+        for (const [key, v] of rates)
+          if (now - v.at > windowMs) rates.delete(key);
       if (pathname === "/api/activate" && req.method === "POST") {
         if (!token.email_verified)
           error("Valida tu correo antes de activar la cuenta.", 403);
@@ -255,10 +305,16 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
             p = s.data();
           if (!p || !["invited", "active"].includes(p.status))
             error("No tienes una invitación activa.", 403);
-          if (typeof p.email !== "string" || p.email.toLowerCase() !== token.email?.toLowerCase())
+          if (
+            typeof p.email !== "string" ||
+            p.email.toLowerCase() !== token.email?.toLowerCase()
+          )
             error("La invitación no corresponde a este correo.", 403);
           if (p.status === "active") return;
-          if (!Number.isFinite(p.inviteExpiresAt) || p.inviteExpiresAt <= Date.now())
+          if (
+            !Number.isFinite(p.inviteExpiresAt) ||
+            p.inviteExpiresAt <= Date.now()
+          )
             error(
               "La invitación ha caducado. Pide al administrador que la reenvíe.",
               403,
@@ -272,15 +328,18 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
         return;
       }
       requireActive(profile, token.email_verified);
-      if (typeof profile.email !== "string" || profile.email.toLowerCase() !== token.email?.toLowerCase())
+      if (
+        typeof profile.email !== "string" ||
+        profile.email.toLowerCase() !== token.email?.toLowerCase()
+      )
         error("Tu correo no coincide con el acceso autorizado.", 403);
       if (pathname === "/api/snapshot" && req.method === "GET") {
         const offeringQuery =
           profile.role === "admin"
             ? db.collection("offerings")
             : db
-              .collection("offerings")
-              .where("memberIds", "array-contains", profile.id);
+                .collection("offerings")
+                .where("memberIds", "array-contains", profile.id);
         const [offeringDocs, people] = await Promise.all([
           offeringQuery.get(),
           profile.role === "admin"
@@ -443,14 +502,21 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
           }
           const taskRef = ref.collection("tasks").doc(childId),
             previous = await tx.get(taskRef),
-            next = cleanTask(body, childId, previous.exists ? previous.data().createdAt : undefined);
+            next = cleanTask(
+              body,
+              childId,
+              previous.exists ? previous.data().createdAt : undefined,
+            );
           if (actor.role !== "admin") {
             if (
               !previous.exists ||
               !canEditTask(actor, o, previous.data()) ||
               !taskProgressOnly(previous.data(), next)
             )
-              error("Solo puedes actualizar el cumplimiento de tus tareas.", 403);
+              error(
+                "Solo puedes actualizar el cumplimiento de tus tareas.",
+                403,
+              );
           }
           validateTask(next, o);
           const projectTasks = await tx.get(ref.collection("tasks"));
@@ -476,6 +542,8 @@ export function createApiHandler({ auth: injectedAuth, db: injectedDb, allowedOr
       }
       error("Ruta no encontrada.", 404);
     } catch (e) {
+      if (!e.status || e.status >= 500)
+        console.error("api_request_failed", e.code || e.name || "unknown");
       const status = e.status || (e.code ? 503 : 400);
       respond(
         {

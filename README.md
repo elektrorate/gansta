@@ -31,6 +31,7 @@ Variables de Production en Vercel:
 - `VITE_API_URL=/`: peticiones a `/api` en el mismo origen; nunca dejar una dirección localhost en la publicación.
 - `VITE_ENABLE_DEMO=false`: no activar demostración en el build publicado.
 - `GOOGLE_CLOUD_PROJECT=gansta-app`.
+- `NODE_OPTIONS=--experimental-require-module`: compatibilidad documentada de Vercel Node 24 con las dependencias ESM de Firebase Admin 14. Sin esta opción el runtime puede devolver `ERR_REQUIRE_ESM` aunque el build termine correctamente.
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: credencial privada de Firebase Admin, marcada Sensitive y exclusiva de Production. Nunca usar un prefijo `VITE_` ni subirla a GitHub. Las Preview no reciben esta credencial y fallan cerradas para acceso a la API.
 - `APP_ORIGIN`, si se configura: lista de orígenes exactos, separados por comas. Vercel añade también sus URLs de deployment y producción a la lista, sin usar comodines ni confiar en cabeceras Host arbitrarias.
 
