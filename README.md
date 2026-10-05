@@ -21,6 +21,8 @@ npm run build
 
 ## Prototipo en Vercel
 
+URL pública verificada: https://gansta-three.vercel.app/ . Código: https://github.com/elektrorate/gansta . El repositorio está conectado a Vercel para despliegues de `main`. Se comprobó la lectura autenticada del snapshot del administrador, junto con rechazos 401/403 y respuestas JSON 404/400. No se escribieron datos de negocio para estas comprobaciones.
+
 La interfaz Vite y la API se publican en un mismo proyecto Vercel. `api/index.mjs` delega al handler compartido sin abrir un puerto; `server/index.mjs` mantiene el servidor local. El proyecto usa Node.js 24, región `fra1` y funciones con duración máxima configurada de 60 segundos. Las rutas desconocidas de `/api` responden JSON, no la página web.
 
 El despliegue Hobby se autoriza únicamente como prototipo personal de evaluación, no para operar un negocio. Antes de cualquier uso comercial hay que utilizar un plan permitido por Vercel o cambiar de alojamiento. No se activa automáticamente un plan de pago.
