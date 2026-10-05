@@ -8,7 +8,13 @@ El usuario autorizó subir el proyecto a https://github.com/elektrorate/gansta (
 
 Este documento consolida las decisiones de la conversación, el estado del código y los pendientes. Es una memoria portable para otro editor o asistente; no es una transcripción literal. Las decisiones definitivas de este documento sustituyen las propuestas antiguas que se contradigan con ellas. El estado descrito corresponde a esta fecha: comprobar el código antes de continuar.
 
+### Actualización del 4 de octubre de 2026: planificación retirada
+
+El usuario pidió eliminar toda la sección «Ver planificación» para sustituirla por otra lógica todavía no definida. Se retiraron el acceso, la ruta, los componentes de tareas, calendarios de planificación, Gantt y sus pruebas específicas. Los apartados posteriores de planificación son referencias históricas, no requisitos vigentes. Los datos guardados se conservan; no se debe borrar ni reemplazar esa información al diseñar la nueva función. El calendario de resultados comerciales y las mejoras de ventas y presupuesto continúan activos.
+
 ## 1. Objetivo y decisión principal
+
+Actualización del 4 de octubre de 2026: el usuario aprobó una planificación NUEVA basada en la referencia visual, con Gantt general, Drive, cuatro hitos y tarjetas. Cada mini Gantt debe mostrar únicamente las subtareas de su tarjeta, nunca tareas de otras tarjetas. No restaurar el calendario grande de la versión retirada. Se conservan los datos anteriores; las subtareas sin fechas propias muestran fechas heredadas. Semana/Mes afecta al Gantt general. Los hitos se completan por sus tareas o confirmación explícita, no por fechas pasadas. Esta actualización sustituye las especificaciones históricas incompatibles de planificación.
 
 Construir **Gantsta desde cero**, una aplicación exclusivamente móvil para gestionar campañas publicitarias online de productos, clases y experiencias. El núcleo es seguir el cumplimiento de ventas: objetivo, cierres conseguidos, consultas recibidas y gasto publicitario a lo largo del tiempo.
 

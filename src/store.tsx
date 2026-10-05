@@ -1,29 +1,313 @@
-import { createContext,useContext,useEffect,useState,useRef,type ReactNode } from 'react';
-import { onAuthStateChanged,signOut,type User } from 'firebase/auth';
-import { doc,onSnapshot } from 'firebase/firestore';
-import { api,auth,db } from './firebase';
-import { demoData } from './data';
-import type { Bundle,Entry,Offering,Profile,Task } from '../shared/model';
-import { canEditTask,canView,validateEntry,validateOffering,validateTask } from '../shared/domain';
-const EMPTY:Bundle={offerings:[],entries:{},tasks:{},profiles:[]},KEY='gantsta.demo.v1';
-type Store={bundle:Bundle;profile:Profile|null;identity:User|null;demo:boolean;loading:boolean;error:string;startDemo:()=>void;logout:()=>Promise<void>;refresh:()=>Promise<void>;switchDemo:(id:string)=>void;saveOffering:(o:Offering)=>Promise<void>;saveEntry:(o:Offering,e:Entry)=>Promise<void>;saveTask:(o:Offering,t:Task)=>Promise<void>;invite:(p:Pick<Profile,'name'|'email'|'role'>)=>Promise<void>;updateUser:(p:Profile)=>Promise<void>};
-const Context=createContext<Store|null>(null);
-export function Provider({children}:{children:ReactNode}){
-  const [bundle,setBundle]=useState<Bundle>(EMPTY),[profile,setProfile]=useState<Profile|null>(null),[identity,setIdentity]=useState<User|null>(null),[demo,setDemo]=useState(false),[loading,setLoading]=useState(Boolean(auth)),[error,setError]=useState('');
-  const ref=useRef(bundle);const session=useRef(0);ref.current=bundle;
-  useEffect(()=>{if(demo||!auth)return;return onAuthStateChanged(auth,user=>{session.current++;setIdentity(user);setProfile(null);setBundle(EMPTY);setError('');setLoading(Boolean(user));if(!user)setLoading(false);});},[demo]);
-  useEffect(()=>{if(demo||!identity||!db)return;return onSnapshot(doc(db,'users',identity.uid),snap=>{setProfile(snap.exists()?{...snap.data(),id:snap.id} as Profile:null);setLoading(false);},()=>{setError('No se pudo verificar tu autorización. Revisa la conexión o contacta con el administrador.');setLoading(false);});},[demo,identity]);
-  async function refresh(){if(demo)return;const version=session.current;setLoading(true);try{const next=await api<Bundle>('/snapshot');if(version===session.current){setBundle(next);setError('');}}catch(e){if(version===session.current){setBundle(EMPTY);setError((e as Error).message);}}finally{if(version===session.current)setLoading(false);}}
-  useEffect(()=>{if(demo||!identity?.emailVerified||profile?.status!=='active'){if(!demo)setBundle(EMPTY);return;}let cancelled=false;const version=session.current;const load=()=>api<Bundle>('/snapshot').then(next=>{if(!cancelled&&version===session.current){setBundle(next);setError('');}}).catch(e=>{if(!cancelled){setBundle(EMPTY);setError((e as Error).message);}}).finally(()=>{if(!cancelled)setLoading(false);});setLoading(true);void load();const timer=setInterval(()=>void load(),30000);return()=>{cancelled=true;clearInterval(timer)};},[demo,identity,profile?.status,profile?.role]);
-  function startDemo(){try{const raw=localStorage.getItem(KEY);const next=raw?JSON.parse(raw) as Bundle:demoData();if(!Array.isArray(next.offerings)||!Array.isArray(next.profiles)||!next.tasks||!next.entries)throw new Error('Datos de prueba inválidos.');next.offerings.forEach(validateOffering);setDemo(true);setBundle(next);setProfile(next.profiles.find(p=>p.id==='demo-admin')||null);setLoading(false);setError('');}catch{setError('No se pudo cargar la demostración guardada. Revisa el almacenamiento de este navegador.');}}
-  function commit(next:Bundle){localStorage.setItem(KEY,JSON.stringify(next));ref.current=next;setBundle(next);if(profile)setProfile(next.profiles.find(p=>p.id===profile.id)||null);}
-  async function logout(){session.current++;if(!demo&&auth)await signOut(auth);setDemo(false);setProfile(null);setIdentity(null);setBundle(EMPTY);setError('');location.hash='#/';}
-  function admin(){if(profile?.role!=='admin'||profile.status!=='active')throw new Error('Solo el administrador puede realizar esta acción.');}
-  async function saveOffering(o:Offering){admin();validateOffering(o);if(demo){const old=ref.current;commit({...old,offerings:old.offerings.some(v=>v.id===o.id)?old.offerings.map(v=>v.id===o.id?o:v):[...old.offerings,o]});}else{await api('/offerings/'+o.id,'PUT',o);await refresh();}}
-  async function saveEntry(o:Offering,e:Entry){admin();validateEntry(e,o);const entry={...e,id:e.date+'_'+e.platform};if(demo){const old=ref.current,entries=old.entries[o.id]||[];commit({...old,entries:{...old.entries,[o.id]:[...entries.filter(v=>v.id!==entry.id),entry]}});}else{await api('/offerings/'+o.id+'/entries/'+entry.id,'PUT',entry);await refresh();}}
-  async function saveTask(o:Offering,t:Task){validateTask(t,o);const existing=(ref.current.tasks[o.id]||[]).find(v=>v.id===t.id);if(!profile||!canView(profile,o)||(!existing&&profile.role!=='admin')||(existing&&!canEditTask(profile,o,existing)))throw new Error('No tienes permiso para modificar esta tarea.');if(profile.role!=='admin'&&existing){if(JSON.stringify({...t,subtasks:[],blocked:false})!==JSON.stringify({...existing,subtasks:[],blocked:false})||t.subtasks.length!==existing.subtasks.length||t.subtasks.some((s,i)=>s.title!==existing.subtasks[i].title))throw new Error('Solo puedes actualizar el cumplimiento y el bloqueo.');}if(demo){const old=ref.current;commit({...old,tasks:{...old.tasks,[o.id]:[...(old.tasks[o.id]||[]).filter(v=>v.id!==t.id),t]}});}else{await api('/offerings/'+o.id+'/tasks/'+t.id,'PUT',t);await refresh();}}
-  async function invite(p:Pick<Profile,'name'|'email'|'role'>){admin();if(demo){if(ref.current.profiles.some(v=>v.email.toLowerCase()===p.email.toLowerCase()))throw new Error('Este correo ya está registrado.');commit({...ref.current,profiles:[...ref.current.profiles,{...p,id:crypto.randomUUID(),status:'invited',invitedAt:new Date().toISOString()}]});}else{await api('/users','POST',p);await refresh();}}
-  async function updateUser(p:Profile){admin();if(p.id===profile?.id)throw new Error('No puedes modificar tu propio acceso.');if(demo)commit({...ref.current,profiles:ref.current.profiles.map(v=>v.id===p.id?p:v)});else{await api('/users/'+p.id,'PATCH',{role:p.role,status:p.status});await refresh();}}
-  return <Context.Provider value={{bundle,profile,identity,demo,loading,error,startDemo,logout,refresh,switchDemo:id=>{if(demo){setProfile(bundle.profiles.find(p=>p.id===id)||null);location.hash='#/';}},saveOffering,saveEntry,saveTask,invite,updateUser}}>{children}</Context.Provider>;
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  type ReactNode,
+} from "react";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
+import { api, auth, db } from "./firebase";
+import { demoData } from "./data";
+import type { Bundle, Entry, Offering, Profile, Task } from "../shared/model";
+import {
+  canEditTask,
+  canView,
+  validateEntry,
+  validateOffering,
+  validateTask,
+  taskProgressOnly,
+  validateTaskDependencies,
+} from "../shared/domain";
+const EMPTY: Bundle = { offerings: [], entries: {}, tasks: {}, profiles: [] },
+  KEY = "gantsta.demo.v4";
+type Store = {
+  bundle: Bundle;
+  profile: Profile | null;
+  identity: User | null;
+  demo: boolean;
+  loading: boolean;
+  error: string;
+  startDemo: () => void;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+  switchDemo: (id: string) => void;
+  saveOffering: (o: Offering) => Promise<void>;
+  saveEntry: (o: Offering, e: Entry) => Promise<void>;
+  saveTask: (o: Offering, t: Task) => Promise<void>;
+  invite: (p: Pick<Profile, "name" | "email" | "role">) => Promise<void>;
+  updateUser: (p: Profile) => Promise<void>;
+};
+const Context = createContext<Store | null>(null);
+export function Provider({ children }: { children: ReactNode }) {
+  const [bundle, setBundle] = useState<Bundle>(EMPTY),
+    [profile, setProfile] = useState<Profile | null>(null),
+    [identity, setIdentity] = useState<User | null>(null),
+    [demo, setDemo] = useState(false),
+    [loading, setLoading] = useState(Boolean(auth)),
+    [error, setError] = useState("");
+  const ref = useRef(bundle);
+  const session = useRef(0);
+  ref.current = bundle;
+  useEffect(() => {
+    if (demo || !auth) return;
+    return onAuthStateChanged(auth, (user) => {
+      session.current++;
+      setIdentity(user);
+      setProfile(null);
+      setBundle(EMPTY);
+      setError("");
+      setLoading(Boolean(user));
+      if (!user) setLoading(false);
+    });
+  }, [demo]);
+  useEffect(() => {
+    if (demo || !identity || !db) return;
+    return onSnapshot(
+      doc(db, "users", identity.uid),
+      (snap) => {
+        setProfile(
+          snap.exists() ? ({ ...snap.data(), id: snap.id } as Profile) : null,
+        );
+        setLoading(false);
+      },
+      () => {
+        setError(
+          "No se pudo verificar tu autorización. Revisa la conexión o contacta con el administrador.",
+        );
+        setLoading(false);
+      },
+    );
+  }, [demo, identity]);
+  async function refresh() {
+    if (demo) return;
+    const version = session.current;
+    setLoading(true);
+    try {
+      const next = await api<Bundle>("/snapshot");
+      if (version === session.current) {
+        setBundle(next);
+        setError("");
+      }
+    } catch (e) {
+      if (version === session.current) {
+        setBundle(EMPTY);
+        setError((e as Error).message);
+      }
+    } finally {
+      if (version === session.current) setLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (demo || !identity?.emailVerified || profile?.status !== "active") {
+      if (!demo) setBundle(EMPTY);
+      return;
+    }
+    let cancelled = false;
+    const version = session.current;
+    const load = () =>
+      api<Bundle>("/snapshot")
+        .then((next) => {
+          if (!cancelled && version === session.current) {
+            setBundle(next);
+            setError("");
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setBundle(EMPTY);
+            setError((e as Error).message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    setLoading(true);
+    void load();
+    const timer = setInterval(() => void load(), 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [demo, identity, profile?.status, profile?.role]);
+  function startDemo() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      const next = raw ? (JSON.parse(raw) as Bundle) : demoData();
+      if (
+        !Array.isArray(next.offerings) ||
+        !Array.isArray(next.profiles) ||
+        !next.tasks ||
+        !next.entries
+      )
+        throw new Error("Datos de prueba inválidos.");
+      next.offerings.forEach(validateOffering);
+      setDemo(true);
+      setBundle(next);
+      setProfile(next.profiles.find((p) => p.id === "demo-admin") || null);
+      setLoading(false);
+      setError("");
+    } catch {
+      setError(
+        "No se pudo cargar la demostración guardada. Revisa el almacenamiento de este navegador.",
+      );
+    }
+  }
+  function commit(next: Bundle) {
+    localStorage.setItem(KEY, JSON.stringify(next));
+    ref.current = next;
+    setBundle(next);
+    if (profile)
+      setProfile(next.profiles.find((p) => p.id === profile.id) || null);
+  }
+  async function logout() {
+    session.current++;
+    if (!demo && auth) await signOut(auth);
+    setDemo(false);
+    setProfile(null);
+    setIdentity(null);
+    setBundle(EMPTY);
+    setError("");
+    location.hash = "#/";
+  }
+  function admin() {
+    if (profile?.role !== "admin" || profile.status !== "active")
+      throw new Error("Solo el administrador puede realizar esta acción.");
+  }
+  async function saveOffering(o: Offering) {
+    admin();
+    validateOffering(o);
+    if (demo) {
+      const old = ref.current;
+      commit({
+        ...old,
+        offerings: old.offerings.some((v) => v.id === o.id)
+          ? old.offerings.map((v) => (v.id === o.id ? o : v))
+          : [...old.offerings, o],
+      });
+    } else {
+      await api("/offerings/" + o.id, "PUT", o);
+      await refresh();
+    }
+  }
+  async function saveEntry(o: Offering, e: Entry) {
+    admin();
+    validateEntry(e, o);
+    const entry = { ...e, id: e.date + "_" + e.platform };
+    if (demo) {
+      const old = ref.current,
+        entries = old.entries[o.id] || [];
+      commit({
+        ...old,
+        entries: {
+          ...old.entries,
+          [o.id]: [...entries.filter((v) => v.id !== entry.id), entry],
+        },
+      });
+    } else {
+      await api("/offerings/" + o.id + "/entries/" + entry.id, "PUT", entry);
+      await refresh();
+    }
+  }
+  async function saveTask(o: Offering, t: Task) {
+    validateTask(t, o);
+    validateTaskDependencies(t, ref.current.tasks[o.id] || []);
+    const existing = (ref.current.tasks[o.id] || []).find((v) => v.id === t.id);
+    if (
+      !profile ||
+      !canView(profile, o) ||
+      (!existing && profile.role !== "admin") ||
+      (existing && !canEditTask(profile, o, existing))
+    )
+      throw new Error("No tienes permiso para modificar esta tarea.");
+    if (profile.role !== "admin" && existing && !taskProgressOnly(existing, t))
+      throw new Error("Solo puedes actualizar el cumplimiento y el bloqueo.");
+    if (demo) {
+      const old = ref.current;
+      commit({
+        ...old,
+        tasks: {
+          ...old.tasks,
+          [o.id]: [...(old.tasks[o.id] || []).filter((v) => v.id !== t.id), t],
+        },
+      });
+    } else {
+      await api("/offerings/" + o.id + "/tasks/" + t.id, "PUT", t);
+      await refresh();
+    }
+  }
+  async function invite(p: Pick<Profile, "name" | "email" | "role">) {
+    admin();
+    if (demo) {
+      if (
+        ref.current.profiles.some(
+          (v) => v.email.toLowerCase() === p.email.toLowerCase(),
+        )
+      )
+        throw new Error("Este correo ya está registrado.");
+      commit({
+        ...ref.current,
+        profiles: [
+          ...ref.current.profiles,
+          {
+            ...p,
+            id: crypto.randomUUID(),
+            status: "invited",
+            invitedAt: new Date().toISOString(),
+          },
+        ],
+      });
+    } else {
+      await api("/users", "POST", p);
+      await refresh();
+    }
+  }
+  async function updateUser(p: Profile) {
+    admin();
+    if (p.id === profile?.id)
+      throw new Error("No puedes modificar tu propio acceso.");
+    if (demo)
+      commit({
+        ...ref.current,
+        profiles: ref.current.profiles.map((v) => (v.id === p.id ? p : v)),
+      });
+    else {
+      await api("/users/" + p.id, "PATCH", { role: p.role, status: p.status });
+      await refresh();
+    }
+  }
+  return (
+    <Context.Provider
+      value={{
+        bundle,
+        profile,
+        identity,
+        demo,
+        loading,
+        error,
+        startDemo,
+        logout,
+        refresh,
+        switchDemo: (id) => {
+          if (demo) {
+            setProfile(bundle.profiles.find((p) => p.id === id) || null);
+            location.hash = "#/";
+          }
+        },
+        saveOffering,
+        saveEntry,
+        saveTask,
+        invite,
+        updateUser,
+      }}
+    >
+      {children}
+    </Context.Provider>
+  );
 }
-export function useStore(){const s=useContext(Context);if(!s)throw new Error('Provider missing');return s;}
+export function useStore() {
+  const s = useContext(Context);
+  if (!s) throw new Error("Provider missing");
+  return s;
+}

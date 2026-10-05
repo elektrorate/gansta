@@ -1,4 +1,4 @@
 {
-  "firestore": { "rules": "firestore.rules" },
+  "firestore": { "database": "(default)", "location": "europe-west3", "rules": "firestore.rules" },
   "hosting": { "public": "dist", "ignore": ["firebase.json", "**/.*", "**/node_modules/**"], "rewrites": [{"source": "**", "destination": "/index.html"}] }
 }

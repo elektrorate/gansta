@@ -11,8 +11,11 @@ export const demoEnabled=import.meta.env.DEV||import.meta.env.VITE_ENABLE_DEMO==
 export async function api<T>(path:string,method='GET',body?:unknown):Promise<T>{
   if(!auth?.currentUser)throw new Error('Inicia sesión para continuar.');
   const token=await auth.currentUser.getIdToken();
-  const response=await fetch((import.meta.env.VITE_API_URL||'')+'/api'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
-  const result=await response.json().catch(()=>({error:'No se pudo contactar con el servidor.'}));
+  const base=(import.meta.env.VITE_API_URL||'').trim().replace(/\/+$/,'');
+  const response=await fetch(base+'/api'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('El servidor no devolvió una respuesta válida.');
+  const result=await response.json().catch(()=>{throw new Error('No se pudo leer la respuesta del servidor.');});
+  if(!result||typeof result!=='object'||Array.isArray(result))throw new Error('Respuesta del servidor no válida.');
   if(!response.ok)throw new Error(result.error||'No se pudo completar la operación.');
   return result as T;
 }

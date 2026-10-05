@@ -1,10 +1,204 @@
-import { useState,type FormEvent } from 'react';
-import { sendPasswordResetEmail,signInWithEmailAndPassword,sendEmailVerification } from 'firebase/auth';
-import { api,auth,configured,demoEnabled } from './firebase';
-import { useStore } from './store';
-import { ErrorText,Field,Header } from './ui';
-export function Login(){const {startDemo,error:storeError}=useStore();const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[reset,setReset]=useState(false);
-  async function submit(e:FormEvent){e.preventDefault();if(!auth)return;setBusy(true);setError('');setMessage('');try{if(reset){await sendPasswordResetEmail(auth,email);setMessage('Si la cuenta está registrada, recibirás un enlace para establecer tu contraseña.');}else await signInWithEmailAndPassword(auth,email,password);}catch{setError(reset?'No se pudo enviar el enlace. Comprueba el correo e inténtalo de nuevo.':'No se pudo iniciar sesión. Revisa tus datos o contacta con el administrador.');}finally{setBusy(false)}}
-  return <div className="login"><div className="brand-lockup"><span className="brand-mark">g</span><span>gantsta</span></div><Header title={reset?'Recuperar acceso':'Tu próximo objetivo empieza aquí.'} description={reset?'Recibe un enlace para establecer tu contraseña.':'Marketing organizado. Ventas bajo control.'}/><form onSubmit={submit} className="surface"><h2>{reset?'Establecer contraseña':'Entrar a tu espacio'}</h2><Field label="Correo electrónico"><input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></Field>{!reset?<Field label="Contraseña"><input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></Field>:null}<button disabled={busy||!configured} className="primary">{busy?'Un momento…':reset?'Enviar enlace':'Entrar →'}</button><button type="button" className="text-button" onClick={()=>{setReset(!reset);setError('');setMessage('')}}>{reset?'Volver al login':'Olvidé mi contraseña / Tengo una invitación'}</button><ErrorText error={error||storeError}/>{message?<p role="status" className="notice">{message}</p>:null}</form>{!configured?<div className="notice">El acceso del equipo estará disponible cuando conectes Firebase.</div>:null}{demoEnabled?<button className="secondary full" onClick={startDemo}>Probar la aplicación con datos de ejemplo</button>:null}<p className="footnote">Acceso por invitación. Tus objetivos, en un solo lugar.</p></div>;
+import { useState, type FormEvent } from "react";
+import {
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
+import { api, auth, configured, demoEnabled } from "./firebase";
+import { useStore } from "./store";
+import { ErrorText, Field, Header } from "./ui";
+export function Login() {
+  const { startDemo, error: storeError } = useStore();
+  const [email, setEmail] = useState(""),
+    [password, setPassword] = useState(""),
+    [error, setError] = useState(""),
+    [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(false),
+    [reset, setReset] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!auth) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      if (reset) {
+        await sendPasswordResetEmail(auth, email);
+        setMessage(
+          "Si la cuenta está registrada, recibirás un enlace para establecer tu contraseña.",
+        );
+      } else await signInWithEmailAndPassword(auth, email, password);
+    } catch {
+      setError(
+        reset
+          ? "No se pudo enviar el enlace. Comprueba el correo e inténtalo de nuevo."
+          : "No se pudo iniciar sesión. Revisa tus datos o contacta con el administrador.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="login">
+      <div className="brand-lockup">
+        <span className="brand-mark">g</span>
+        <span>gantsta</span>
+      </div>
+      <Header
+        title={reset ? "Recuperar acceso" : "Tu próximo objetivo empieza aquí."}
+        description={
+          reset
+            ? "Recibe un enlace para establecer tu contraseña."
+            : "Marketing organizado. Ventas bajo control."
+        }
+      />
+      <form onSubmit={submit} className="surface">
+        <h2>{reset ? "Establecer contraseña" : "Entrar a tu espacio"}</h2>
+        <Field label="Correo electrónico">
+          <input
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+        {!reset ? (
+          <Field label="Contraseña">
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
+        ) : null}
+        <button disabled={busy || !configured} className="primary">
+          {busy ? "Un momento…" : reset ? "Enviar enlace" : "Entrar →"}
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            setReset(!reset);
+            setError("");
+            setMessage("");
+          }}
+        >
+          {reset
+            ? "Volver al login"
+            : "Olvidé mi contraseña / Tengo una invitación"}
+        </button>
+        <ErrorText error={error || storeError} />
+        {message ? (
+          <p role="status" className="notice">
+            {message}
+          </p>
+        ) : null}
+      </form>
+      {!configured ? (
+        <div className="notice">
+          El acceso del equipo estará disponible cuando conectes Firebase.
+        </div>
+      ) : null}
+      {demoEnabled ? (
+        <button className="secondary full" onClick={startDemo}>
+          Probar la aplicación con datos de ejemplo
+        </button>
+      ) : null}
+      <p className="footnote">
+        Acceso por invitación. Tus objetivos, en un solo lugar.
+      </p>
+    </div>
+  );
 }
-export function AccessGate(){const {identity,profile,logout,refresh,error}=useStore();const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);async function action(kind:'verify'|'refresh'){setBusy(true);try{if(!identity)return;if(kind==='verify'){await sendEmailVerification(identity);setMessage('Revisa tu correo para validar la cuenta.');}else{await identity.reload();await identity.getIdToken(true);if(identity.emailVerified){await api('/activate','POST');await refresh();location.reload();}else setMessage('El correo todavía no está validado.');}}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}return <><Header eyebrow="GANTSTA" title={!profile?'Acceso pendiente':profile.status==='disabled'?'Cuenta desactivada':!identity?.emailVerified?'Valida tu correo':'Activa tu cuenta'} description={!profile?'Tu correo no tiene una invitación autorizada. Contacta con el administrador.':profile.status==='disabled'?'Contacta con el administrador para recuperar el acceso.':'Valida el correo de tu invitación para entrar a gantsta.'}/><ErrorText error={error}/>{profile&&profile.status!=='disabled'?<div className="surface">{!identity?.emailVerified?<button className="primary" disabled={busy} onClick={()=>void action('verify')}>Enviar correo de validación</button>:null}<button className="secondary full" disabled={busy} onClick={()=>void action('refresh')}>{identity?.emailVerified?'Activar cuenta':'Ya he validado mi correo'}</button></div>:null}{message?<p role="status" className="notice">{message}</p>:null}<button className="text-button" onClick={()=>void logout()}>Cerrar sesión</button></>}
+export function AccessGate() {
+  const { identity, profile, logout, refresh, error } = useStore();
+  const [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(false);
+  async function action(kind: "verify" | "refresh") {
+    setBusy(true);
+    try {
+      if (!identity) return;
+      if (kind === "verify") {
+        await sendEmailVerification(identity);
+        setMessage("Revisa tu correo para validar la cuenta.");
+      } else {
+        await identity.reload();
+        await identity.getIdToken(true);
+        if (identity.emailVerified) {
+          if (!profile) {
+            setMessage(
+              "Correo verificado. Falta que un administrador autorice el acceso.",
+            );
+            return;
+          }
+          await api("/activate", "POST");
+          await refresh();
+          location.reload();
+        } else setMessage("El correo todavía no está validado.");
+      }
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <Header
+        eyebrow="GANTSTA"
+        title={
+          !profile
+            ? "Acceso pendiente"
+            : profile.status === "disabled"
+              ? "Cuenta desactivada"
+              : !identity?.emailVerified
+                ? "Valida tu correo"
+                : "Activa tu cuenta"
+        }
+        description={
+          !profile
+            ? "Tu cuenta aún no tiene acceso autorizado. Verifica tu correo; después un administrador podrá completar el alta."
+            : profile.status === "disabled"
+              ? "Contacta con el administrador para recuperar el acceso."
+              : "Valida el correo de tu invitación para entrar a gantsta."
+        }
+      />
+      <ErrorText error={error} />
+      {identity && profile?.status !== "disabled" ? (
+        <div className="surface">
+          {!identity?.emailVerified ? (
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void action("verify")}
+            >
+              Enviar correo de validación
+            </button>
+          ) : null}
+          <button
+            className="secondary full"
+            disabled={busy}
+            onClick={() => void action("refresh")}
+          >
+            {identity?.emailVerified
+              ? profile
+                ? "Activar cuenta"
+                : "Actualizar acceso"
+              : "Ya he validado mi correo"}
+          </button>
+        </div>
+      ) : null}
+      {message ? (
+        <p role="status" className="notice">
+          {message}
+        </p>
+      ) : null}
+      <button className="text-button" onClick={() => void logout()}>
+        Cerrar sesión
+      </button>
+    </>
+  );
+}

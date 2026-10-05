@@ -1,7 +1,511 @@
-import { useState,type FormEvent } from 'react';
-import { milestones,type Offering,type Task } from '../shared/model';
-import { canEditTask,dayCount,driveLink,shortDate,taskState } from '../shared/domain';
-import { useStore } from './store';
-import { Back,Empty,ErrorText,Field,Header,Progress } from './ui';
-export function Planning({offering:o}:{offering:Offering}){const {bundle,profile,saveTask,saveOffering}=useStore(),tasks=bundle.tasks[o.id]||[],admin=profile?.role==='admin';const [filter,setFilter]=useState<number|null>(null),[form,setForm]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[editDrive,setEditDrive]=useState(false),[url,setUrl]=useState(o.driveUrl);const complete=tasks.filter(t=>taskState(t).percentage===100&&!t.blocked).length;async function updateTask(t:Task){setBusy(true);setError('');try{await saveTask(o,t)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}async function saveDrive(e:FormEvent){e.preventDefault();setError('');if(!driveLink(url.trim())){setError('Introduce un enlace de carpeta de Google Drive.');return}setBusy(true);try{await saveOffering({...o,driveUrl:url.trim()});setEditDrive(false)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}return <><Back to={'/offering/'+o.id} label="Offering"/><Header eyebrow={o.name} title="Planificación" description={shortDate(o.start)+' — '+shortDate(o.end)}/><section className="surface"><h2>Cumplimiento de tareas</h2><div className="amount">{complete} completadas <small>de {tasks.length}</small></div><Progress value={tasks.length?complete/tasks.length*100:0} label="Tareas completadas"/><div className="milestone-line">{milestones.map((name,i)=>{const ts=tasks.filter(t=>t.milestone===i),done=ts.length>0&&ts.every(t=>taskState(t).percentage===100&&!t.blocked),progress=ts.some(t=>taskState(t).percentage>0);return <button key={name} className={done?'done':progress?'current':''} aria-pressed={filter===i} onClick={()=>setFilter(filter===i?null:i)}><span className="milestone-dot">{done?'✓':i+1}</span><strong>{name}</strong><small>{shortDate(o.milestoneDates[i])}</small></button>})}</div><div className="legend"><span>✓ Completado</span><span>◉ En proceso</span><span>○ Pendiente</span></div></section><section className="surface"><div className="row"><h2>Carpeta de Drive</h2><span aria-hidden="true">↗</span></div><p className="muted small">Materiales de {o.name}</p>{o.driveUrl?<a className="text-button" href={o.driveUrl} target="_blank" rel="noopener noreferrer">Abrir carpeta ↗</a>:<p className="small muted">Sin carpeta vinculada.</p>}{admin?<button className="text-button" onClick={()=>setEditDrive(!editDrive)}>{o.driveUrl?'Cambiar carpeta':'Vincular carpeta'}</button>:null}{editDrive?<form onSubmit={saveDrive}><Field label="Enlace de la carpeta"><input type="url" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"/></Field><button className="secondary full" disabled={busy}>Guardar vínculo</button></form>:null}</section><div className="list-heading"><span>{filter===null?'TODAS LAS TAREAS':milestones[filter].toUpperCase()}</span>{filter!==null?<button className="text-button" onClick={()=>setFilter(null)}>Ver todas</button>:null}{admin?<button className="text-button" onClick={()=>setForm(!form)}>{form?'Cancelar':'+ Tarea'}</button>:null}</div><ErrorText error={error}/>{form?<TaskForm o={o} onClose={()=>setForm(false)}/>:null}{tasks.filter(t=>filter===null||t.milestone===filter).map(t=>{const state=taskState(t),allowed=profile&&canEditTask(profile,o,t);return <article className="surface task-card" key={t.id}><div className="row"><span className="small muted">{milestones[t.milestone]}</span><span className={'tag '+(t.blocked?'orange':state.percentage===100?'green':state.percentage?'purple':'gray')}>{state.label}</span></div><h3>{t.title}</h3><div className="row"><span className="person"><i>{t.ownerName.slice(0,2)}</i>{t.ownerName}</span><span className="small muted">{shortDate(t.start)} — {shortDate(t.end)}</span></div><div className="duration-track" aria-label={'Duración: '+shortDate(t.start)+' a '+shortDate(t.end)}><span style={{marginLeft:(dayCount(o.start,t.start)-1)/dayCount(o.start,o.end)*100+'%',width:dayCount(t.start,t.end)/dayCount(o.start,o.end)*100+'%'}}/></div><div className="row small muted"><span>{state.count} de {t.subtasks.length} subtareas</span><strong>{state.percentage} %</strong></div><Progress label={'Cumplimiento de '+t.title} value={state.percentage} color={state.percentage===100?'green':'purple'}/><details><summary>Ver subtareas</summary>{t.subtasks.map((sub,i)=><label className="check" key={i}><input type="checkbox" checked={sub.done} disabled={!allowed||busy} onChange={e=>void updateTask({...t,subtasks:t.subtasks.map((v,j)=>i===j?{...v,done:e.target.checked}:v)})}/>{sub.title}</label>)}{allowed?<label className="check"><input type="checkbox" checked={t.blocked} disabled={busy} onChange={e=>void updateTask({...t,blocked:e.target.checked})}/>Marcar tarea bloqueada</label>:null}</details></article>})}{!tasks.filter(t=>filter===null||t.milestone===filter).length?<Empty>Aún no hay tareas en {filter===null?'este offering':'este hito'}.</Empty>:null}</>}
-function TaskForm({o,onClose}:{o:Offering;onClose:()=>void}){const {bundle,saveTask}=useStore();const [t,setT]=useState<Task>({id:crypto.randomUUID(),title:'',milestone:0,ownerId:o.ownerId,ownerName:bundle.profiles.find(p=>p.id===o.ownerId)?.name||'Responsable',start:o.start,end:o.start,blocked:false,subtasks:[]}),[lines,setLines]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{await saveTask(o,{...t,subtasks:lines.split('\n').filter(s=>s.trim()).map(title=>({title:title.trim(),done:false}))});onClose()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}return <form className="surface" onSubmit={submit}><h2>Nueva tarea</h2><Field label="Título"><input required maxLength={150} value={t.title} onChange={e=>setT({...t,title:e.target.value})}/></Field><Field label="Hito"><select value={t.milestone} onChange={e=>setT({...t,milestone:Number(e.target.value)})}>{milestones.map((m,i)=><option key={m} value={i}>{m}</option>)}</select></Field><Field label="Responsable"><select value={t.ownerId} onChange={e=>setT({...t,ownerId:e.target.value,ownerName:bundle.profiles.find(p=>p.id===e.target.value)?.name||''})}>{bundle.profiles.filter(p=>o.memberIds.includes(p.id)&&p.status==='active').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><div className="columns"><Field label="Inicio"><input required type="date" min={o.start} max={o.end} value={t.start} onChange={e=>setT({...t,start:e.target.value})}/></Field><Field label="Fin"><input required type="date" min={t.start} max={o.end} value={t.end} onChange={e=>setT({...t,end:e.target.value})}/></Field></div><Field label="Subtareas · una por línea"><textarea required rows={3} value={lines} onChange={e=>setLines(e.target.value)} placeholder={'Preparar propuesta\nRevisar materiales'}/></Field><ErrorText error={error}/><button className="primary" disabled={busy}>{busy?'Guardando…':'Crear tarea'}</button></form>}
+import { useRef, useState } from "react";
+import type { Offering, Subtask, Task } from "../shared/model";
+import { canEditTask, shortDate, taskState, today } from "../shared/domain";
+import {
+  dependencyWarnings,
+  milestoneItems,
+  periodFor,
+  shiftPeriod,
+  subtaskProgress,
+  taskRows,
+  taskStatus,
+  type PlanningMode,
+} from "../shared/planning";
+import { Back, Empty, ErrorText } from "./ui";
+import { useStore } from "./store";
+import { PlanningTimeline, planStatusLabels } from "./PlanningTimeline";
+import { PlanningTaskCard } from "./PlanningTaskCard";
+import { TaskEditor } from "./PlanningEditor";
+import { PlanningSettings } from "./PlanningSettings";
+import "./planning.css";
+
+export function Planning({ offering: o }: { offering: Offering }) {
+  const ganttRef = useRef<HTMLElement>(null);
+  const { bundle, profile, saveTask, saveOffering } = useStore(),
+    tasks = bundle.tasks[o.id] || [],
+    admin = profile?.role === "admin";
+  const current = today(),
+    initial = current >= o.start && current <= o.end ? current : o.start;
+  const [mode, setMode] = useState<PlanningMode>("month"),
+    [reference, setReference] = useState(initial);
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () =>
+      new Set(
+        taskRows(tasks)
+          .slice(0, 1)
+          .map((row) => row.id),
+      ),
+  );
+  const [selectedTask, setSelectedTask] = useState<string | null>(null),
+    [milestoneFilter, setMilestoneFilter] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all"),
+    [ownerFilter, setOwnerFilter] = useState("all");
+  const [editing, setEditing] = useState<Task | null>(null),
+    [settings, setSettings] = useState(false),
+    [showAlerts, setShowAlerts] = useState(false);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const period = periodFor(reference, mode),
+    allOrdered = taskRows(tasks).map((row) =>
+      tasks.find((task) => task.id === row.id)!,
+    );
+  const filtered = allOrdered.filter(
+    (task) =>
+      task.start <= period.end &&
+      task.end >= period.start &&
+      (statusFilter === "all" || taskStatus(task) === statusFilter) &&
+      (ownerFilter === "all" || task.ownerId === ownerFilter) &&
+      (milestoneFilter === null || task.milestone === milestoneFilter),
+  );
+  const milestones = milestoneItems(o, tasks);
+  const nextMilestone = milestones
+    .filter((item) => !item.completed && item.date >= current)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const alerts = allOrdered.flatMap((task) => [
+    ...(taskStatus(task) === "blocked" ? [`${task.title}: bloqueada.`] : []),
+    ...(task.end < current && taskStatus(task) !== "completed"
+      ? [`${task.title}: vencida.`]
+      : []),
+    ...dependencyWarnings(task, tasks),
+  ]);
+  const completed = filtered.filter(
+      (task) => taskStatus(task) === "completed",
+    ).length,
+    blocked = filtered.filter((task) => taskStatus(task) === "blocked").length;
+  const progress = filtered.length
+    ? Math.round(
+        filtered.reduce((sum, task) => sum + taskState(task).percentage, 0) /
+          filtered.length,
+      )
+    : 0;
+  const description =
+    o.planningDescription?.trim().split(/\s+/).slice(0, 140).join(" ") ||
+    "Organiza las tareas, los responsables y las fechas de la campaña.";
+
+  function expand(id: string) {
+    setExpanded((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function focusTask(id: string) {
+    setSelectedTask(id);
+    setExpanded((previous) => new Set([...previous, id]));
+    requestAnimationFrame(() => {
+      const card = document.getElementById("plan-task-" + id);
+      card?.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      card?.focus({ preventScroll: true });
+    });
+  }
+  function selectMilestone(index: number) {
+    setMilestoneFilter((previous) => (previous === index ? null : index));
+    setReference(milestones[index].date);
+    setStatusFilter("all");
+    setOwnerFilter("all");
+    requestAnimationFrame(() => {
+      ganttRef.current?.scrollIntoView({
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "start",
+      });
+      ganttRef.current?.focus({ preventScroll: true });
+    });
+  }
+  async function persist(task: Task) {
+    await saveTask(o, { ...task, updatedAt: new Date().toISOString() });
+  }
+  async function changeSubtask(task: Task, index: number, sub: Subtask) {
+    setBusy(true);
+    setError("");
+    try {
+      const subtasks = task.subtasks.map((item, i) =>
+          i === index ? sub : item,
+        ),
+        value = Math.round(
+          subtasks.reduce((sum, item) => sum + subtaskProgress(item), 0) /
+            subtasks.length,
+        );
+      await persist({
+        ...task,
+        subtasks,
+        progress: value,
+        status:
+          task.blocked || task.status === "blocked"
+            ? "blocked"
+            : value === 100
+              ? "completed"
+              : value > 0
+                ? "in_progress"
+                : "pending",
+      });
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function complete(task: Task) {
+    setBusy(true);
+    setError("");
+    try {
+      await persist({
+        ...task,
+        blocked: false,
+        status: "completed",
+        progress: 100,
+        subtasks: task.subtasks.map((sub) => ({
+          ...sub,
+          done: true,
+          status: "completed",
+          progress: 100,
+        })),
+      });
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function createTask() {
+    const date =
+      reference >= o.start && reference <= o.end ? reference : o.start;
+    setEditing({
+      id: crypto.randomUUID(),
+      title: "",
+      milestone: 0,
+      ownerId: o.ownerId,
+      ownerName:
+        bundle.profiles.find((person) => person.id === o.ownerId)?.name ||
+        "Responsable",
+      start: date,
+      end: date,
+      blocked: false,
+      status: "pending",
+      priority: "medium",
+      color: "violet",
+      subtasks: [
+        {
+          id: crypto.randomUUID(),
+          title: "",
+          done: false,
+          start: date,
+          end: date,
+          progress: 0,
+          status: "pending",
+        },
+      ],
+      predecessorIds: [],
+    });
+  }
+  return (
+    <div className="planning-page">
+      <Back to={"/offering/" + o.id} label="Offering" />
+      <header className="plan-header">
+        <div className="row">
+          <div>
+            <h1>{o.name}</h1>
+            <p>
+              {shortDate(o.start)} - {shortDate(o.end)}
+            </p>
+          </div>
+          {alerts.length ? (
+            <button
+              type="button"
+              className="plan-icon-button plan-alert-button"
+              aria-label={`Ver ${alerts.length} avisos`}
+              onClick={() => setShowAlerts(!showAlerts)}
+            >
+              !
+            </button>
+          ) : null}
+        </div>
+        {o.campaignName ? (
+          <p className="plan-campaign-name">{o.campaignName}</p>
+        ) : null}
+        <p className="plan-description">{description}</p>
+        {admin ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setSettings(true)}
+          >
+            Editar planificación
+          </button>
+        ) : null}
+      </header>
+      {showAlerts ? (
+        <div className="plan-alerts" role="status">
+          <h2>Avisos</h2>
+          {[...new Set(alerts)].map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      ) : null}
+      <section className="plan-drive">
+        <div>
+          <h2>Carpeta de Drive</h2>
+          <p>Materiales de {o.name}</p>
+          {admin ? (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setSettings(true)}
+            >
+              {o.driveUrl ? "Cambiar carpeta" : "Vincular carpeta"}
+            </button>
+          ) : !o.driveUrl ? (
+            <p>Sin carpeta vinculada.</p>
+          ) : null}
+        </div>
+        {o.driveUrl ? (
+          <a href={o.driveUrl} target="_blank" rel="noopener noreferrer">
+            Ver Drive
+          </a>
+        ) : null}
+      </section>
+      <section
+        className="surface plan-overview"
+        ref={ganttRef}
+        tabIndex={-1}
+        aria-labelledby="plan-gantt-title"
+      >
+        <div className="plan-overview-header">
+          <div>
+            <h2 id="plan-gantt-title">Gantt de planificación</h2>
+            <p className="small muted">
+              Tareas principales, duración y progreso
+            </p>
+          </div>
+          <div
+            className="plan-mode-switch"
+            role="group"
+            aria-label="Escala del Gantt"
+          >
+            <button
+              type="button"
+              aria-pressed={mode === "week"}
+              onClick={() => setMode("week")}
+            >
+              Semana
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === "month"}
+              onClick={() => setMode("month")}
+            >
+              Mes
+            </button>
+          </div>
+        </div>
+        <div className="plan-period-navigation">
+          <button
+            type="button"
+            aria-label="Periodo anterior"
+            onClick={() => setReference(shiftPeriod(reference, mode, -1))}
+          >
+            ‹
+          </button>
+          <p aria-live="polite">
+            {shortDate(period.start)} - {shortDate(period.end)}
+            <small>
+              {mode === "month"
+                ? new Date(reference + "T12:00:00").toLocaleDateString(
+                    "es-ES",
+                    { month: "long", year: "numeric" },
+                  )
+                : "Vista semanal"}
+            </small>
+          </p>
+          <button
+            type="button"
+            aria-label="Periodo siguiente"
+            onClick={() => setReference(shiftPeriod(reference, mode, 1))}
+          >
+            ›
+          </button>
+        </div>
+        <PlanningTimeline
+          rows={taskRows(filtered)}
+          start={period.start}
+          end={period.end}
+          selectedId={selectedTask}
+          onSelect={focusTask}
+          markers={milestones}
+          onMilestone={selectMilestone}
+        />
+      </section>
+      <section className="surface plan-milestones">
+        <div className="row">
+          <h2>Hitos de la campaña</h2>
+          <span className="small muted">4 hitos</span>
+        </div>
+        <div className="plan-milestone-grid">
+          {milestones.map((item) => (
+            <button
+              type="button"
+              className={
+                "plan-milestone " +
+                (item.completed ? "completed " : "") +
+                (milestoneFilter === item.index ? "selected" : "")
+              }
+              key={item.index}
+              aria-pressed={milestoneFilter === item.index}
+              onClick={() => selectMilestone(item.index)}
+            >
+              <i />
+              <span>
+                <strong>{item.name}</strong>
+                <small>
+                  {shortDate(item.date)} ·{" "}
+                  {item.completed ? "Completado" : "Pendiente"}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="plan-period-summary" aria-live="polite">
+        <div>
+          <strong>{progress}%</strong>
+          <span>Progreso del periodo</span>
+        </div>
+        <div>
+          <strong>{filtered.length}</strong>
+          <span>Tareas</span>
+        </div>
+        <div>
+          <strong>{completed}</strong>
+          <span>Completadas</span>
+        </div>
+        <div>
+          <strong>{blocked}</strong>
+          <span>Bloqueadas</span>
+        </div>
+        {nextMilestone ? (
+          <p>
+            Próximo hito: <b>{nextMilestone.name}</b> ·{" "}
+            {shortDate(nextMilestone.date)}
+          </p>
+        ) : null}
+      </section>
+      <div className="plan-list-header">
+        <div>
+          <h2>Tareas del periodo</h2>
+          <p>
+            {filtered.length} tareas · {shortDate(period.start)} -{" "}
+            {shortDate(period.end)}
+          </p>
+        </div>
+        {admin ? (
+          <button type="button" className="secondary" onClick={createTask}>
+            + Nueva tarea
+          </button>
+        ) : null}
+      </div>
+      <div className="plan-filters">
+        <label>
+          <span>Estado</span>
+          <select
+            aria-label="Filtrar por estado"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">Todos los estados</option>
+            {Object.entries(planStatusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Responsable</span>
+          <select
+            aria-label="Filtrar por responsable"
+            value={ownerFilter}
+            onChange={(event) => setOwnerFilter(event.target.value)}
+          >
+            <option value="all">Todos los responsables</option>
+            {bundle.profiles
+              .filter((person) => o.memberIds.includes(person.id))
+              .map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+          </select>
+        </label>
+      </div>
+      {milestoneFilter !== null ? (
+        <button
+          type="button"
+          className="text-button plan-clear-filter"
+          onClick={() => setMilestoneFilter(null)}
+        >
+          Hito: {milestones[milestoneFilter].name} · Ver todas las tareas
+        </button>
+      ) : null}
+      <ErrorText error={error} />
+      <div className="plan-task-list">
+        {filtered.map((task) => (
+          <PlanningTaskCard
+            key={task.id}
+            task={task}
+            tasks={tasks}
+            profiles={bundle.profiles}
+            expanded={expanded.has(task.id)}
+            selected={selectedTask === task.id}
+            canEdit={Boolean(profile && canEditTask(profile, o, task))}
+            busy={busy}
+            onExpand={() => expand(task.id)}
+            onEdit={() => setEditing(task)}
+            onSubtaskChange={(index, sub) =>
+              void changeSubtask(task, index, sub)
+            }
+            onComplete={() => void complete(task)}
+          />
+        ))}
+        {!filtered.length ? (
+          <Empty>No hay tareas para este periodo o filtro.</Empty>
+        ) : null}
+      </div>
+      {editing ? (
+        <TaskEditor
+          key={editing.id}
+          offering={o}
+          task={editing}
+          tasks={tasks}
+          profiles={bundle.profiles}
+          canManage={admin}
+          onClose={() => setEditing(null)}
+          onSave={async (task) => {
+            await persist(task);
+            setSelectedTask(task.id);
+            setExpanded((previous) => new Set([...previous, task.id]));
+            if (task.end < period.start || task.start > period.end)
+              setReference(task.start);
+            setStatusFilter("all");
+            setOwnerFilter("all");
+            setMilestoneFilter(null);
+          }}
+        />
+      ) : null}
+      {settings ? (
+        <PlanningSettings
+          offering={o}
+          tasks={tasks}
+          onClose={() => setSettings(false)}
+          onSave={saveOffering}
+        />
+      ) : null}
+    </div>
+  );
+}
